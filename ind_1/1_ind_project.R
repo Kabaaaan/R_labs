@@ -45,6 +45,7 @@ final_df <- left_join(mean_long, flat_long, by = c("Год", "Регион")) %>
 
 write.csv(final_df, "final_data.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
+
 #print(final_df)
 #print(paste("Число наблюдений:", nrow(final_df)))
 #print(paste("Уникальных регионов:", n_distinct(final_df$Регион)))
@@ -58,15 +59,14 @@ round(cor(final_df_sorted$mean_salary, final_df_sorted$flat_count), 4) # 0.1571
 cor.test(final_df_sorted$mean_salary, final_df_sorted$flat_count, conf.level = 0.9)
 # Корреляция слабая, но значимая (p-value = 0.00000007162). Линейная связь не сильна — рассмотрим нелинейные модели.
 
+
 plot(final_df_sorted$mean_salary, final_df_sorted$flat_count,
      main = "Корреляционное поле",
      xlab = "Доходы", ylab = "Квартиры", pch = 18, col = "blue")
-abline(reg_log, col = "red", lwd = 2)
 
 plot(log(final_df_sorted$mean_salary), log(final_df_sorted$flat_count),
-     main = "Корреляционное поле (log)",
+     main = "Корреляционное поле",
      xlab = "Доходы", ylab = "Квартиры", pch = 18, col = "blue")
-abline(reg_log, col = "red", lwd = 2)
 
 
 # Этап 3: Построение и сравнение моделей
@@ -113,6 +113,22 @@ summary(m2) # p-value: < 0.000000000000000222 => Модель статистич
 # Вывод: FE по регионам (m2) — лучшая (within R² ~0.36, коэффициент ~0.44). Выбираем m2 как основную.
 
 
+
+y_within <- pmodel.response(m2)  # отклонения от среднего значения по каждому региону log(flat_count) за все годы
+X_within <- model.matrix(m2)[,1] # отклонения от среднего значения по каждому регионуlog(mean_salary) за все годы
+
+plot(X_within,
+     y_within,
+     pch=19,
+     col=rgb(0,0,0,0.3),
+     xlab="log(Доход)",
+     ylab="log(Квартиры)",
+     main="FE модель по регионам")
+
+abline(a=0, b=coef(m2), col="blue", lwd=2)
+
+
+
 # Этап 5: Верификация основной модели (m2)
 
 # Остатки
@@ -146,8 +162,8 @@ plot(karelia_res,
 abline(h = 0, col = "red")
 
 # Q-Q 
-qqnorm(res_m2, main = "Q-Q plot остатков m2")
-qqline(res_m2, col = "red")
+#qqnorm(res_m2, main = "Q-Q plot остатков m2")
+#`qqline(res_m2, col = "red")
 
 
 # MAPE
@@ -156,7 +172,6 @@ pred_flats <- exp(pred_log)
 actual_flats <- pdata$flat_count
 
 mape <- mean(abs((pred_flats - actual_flats) / actual_flats)) * 100 # 27.64328
-
 # Вывод: Модель адекватна. 
 
 # Этап 6: Прогноз для Республики Карелия с m2
@@ -175,17 +190,3 @@ cat("Фактические квартиры:", actual_flats, "\n")
 cat("Прогноз m2:", round(pred_flats_m2, 0), "\n")
 cat("Абсолютная ошибка:", round(pred_flats_m2 - actual_flats, 0), "\n")
 cat("Относительная ошибка:", round((pred_flats_m2 - actual_flats)/actual_flats * 100, 2), "%\n") # Прогноз близок к факту, ошибка разумна.
-
-
-y_within <- pmodel.response(m2)  # отклонения от среднего значения по каждому региону
-X_within <- model.matrix(m2)[,1] # log(mean_salary) в within-форме
-
-plot(X_within,
-     y_within,
-     pch=19,
-     col=rgb(0,0,0,0.3),
-     xlab="log(Доход)",
-     ylab="log(Квартиры)",
-     main="FE модель")
-
-abline(a=0, b=coef(m2), col="blue", lwd=2)
