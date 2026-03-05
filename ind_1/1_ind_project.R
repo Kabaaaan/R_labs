@@ -58,6 +58,16 @@ round(cor(final_df_sorted$mean_salary, final_df_sorted$flat_count), 4) # 0.1571
 cor.test(final_df_sorted$mean_salary, final_df_sorted$flat_count, conf.level = 0.9)
 # Корреляция слабая, но значимая (p-value = 0.00000007162). Линейная связь не сильна — рассмотрим нелинейные модели.
 
+plot(final_df_sorted$mean_salary, final_df_sorted$flat_count,
+     main = "Корреляционное поле",
+     xlab = "Доходы", ylab = "Квартиры", pch = 18, col = "blue")
+abline(reg_log, col = "red", lwd = 2)
+
+plot(log(final_df_sorted$mean_salary), log(final_df_sorted$flat_count),
+     main = "Корреляционное поле (log)",
+     xlab = "Доходы", ylab = "Квартиры", pch = 18, col = "blue")
+abline(reg_log, col = "red", lwd = 2)
+
 
 # Этап 3: Построение и сравнение моделей
 # Сравнить линейную, лог-лог, лог-лин и лин-лог формы для выбора лучшей.
