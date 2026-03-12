@@ -41,21 +41,21 @@ flat_long <- flat_count_df %>%
 
 # Объединение и очистка от нулей
 final_df <- left_join(mean_long, flat_long, by = c("Год", "Регион")) %>%
-  filter(mean_salary > 0 & flat_count > 0) 
+  filter(mean_salary > 0 & flat_count > 0) # не попадают хотя бы с одним нулем
 
 write.csv(final_df, "final_data.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
 
-#print(final_df)
-#print(paste("Число наблюдений:", nrow(final_df)))
-#print(paste("Уникальных регионов:", n_distinct(final_df$Регион)))
-#print(paste("Уникальных лет:", n_distinct(final_df$Год)))
+print(final_df)
+print(paste("Число наблюдений:", nrow(final_df)))
+print(paste("Уникальных регионов:", n_distinct(final_df$Регион)))
+print(paste("Уникальных лет:", n_distinct(final_df$Год)))
 
 
 # Этап 2: Проверка наличия линейной связи
 final_df_sorted <- final_df %>% arrange(mean_salary)
 
-round(cor(final_df_sorted$mean_salary, final_df_sorted$flat_count), 4) # 0.1571
+round(cor(final_df_sorted$mean_salary, final_df_sorted$flat_count), 4) # 0.1831756 
 cor.test(final_df_sorted$mean_salary, final_df_sorted$flat_count, conf.level = 0.9)
 # Корреляция слабая, но значимая (p-value = 0.00000007162). Линейная связь не сильна — рассмотрим нелинейные модели.
 
@@ -67,6 +67,56 @@ plot(final_df_sorted$mean_salary, final_df_sorted$flat_count,
 plot(log(final_df_sorted$mean_salary), log(final_df_sorted$flat_count),
      main = "Корреляционное поле",
      xlab = "Доходы", ylab = "Квартиры", pch = 18, col = "blue")
+
+
+par(mar = c(5, 4, 4, 5) + 0.1)  
+
+plot(salary_by_year$Год, salary_by_year$mean_salary_year,
+     type = "b", pch = 19, col = "blue", lwd = 2,
+     main = "Динамика доходов и строительства квартир по годам",
+     xlab = "Год", ylab = "Средняя зарплата (руб.)",
+     xaxt = "n")
+axis(1, at = salary_by_year$Год, labels = salary_by_year$Год)
+
+par(new = TRUE)
+plot(flat_by_year$Год, flat_by_year$mean_flat_year,
+     type = "b", pch = 17, col = "red", lwd = 2,
+     axes = FALSE, xlab = "", ylab = "")
+axis(4, at = pretty(range(flat_by_year$mean_flat_year)))  
+mtext("Среднее количество квартир", side = 4, line = 3)  
+
+legend("topleft", 
+       legend = c("Средняя зарплата", "Среднее количество квартир"),
+       col = c("blue", "red"), 
+       lwd = 2, 
+       pch = c(19, 17),
+       bty = "n")  
+
+
+# Корреляционное поле с выделением 10 регионов
+#set.seed(123)  # для воспроизводимости
+selected_regions <- sample(unique(final_df$Регион), 10)
+
+colors <- rainbow(10)
+
+plot(final_df$mean_salary, final_df$flat_count,
+     main = "Корреляционное поле: Доходы и построенные квартиры",
+     xlab = "Среднедушевые доходы (руб.)", 
+     ylab = "Количество построенных квартир",
+     pch = 16, col = "lightgray", cex = 0.7)
+
+for (i in 1:10) {
+  region <- selected_regions[i]
+  region_data <- final_df %>% 
+    filter(Регион == region) %>%
+    arrange(Год)  # сортируем по годам для правильного соединения линий
+  
+  lines(region_data$mean_salary, region_data$flat_count, 
+        col = colors[i], lwd = 2, type = "b", pch = 16)
+}
+
+legend("topright", legend = selected_regions, 
+       col = colors, lwd = 2, pch = 16, cex = 0.7, ncol = 2)
 
 
 # Этап 3: Построение и сравнение моделей
@@ -92,7 +142,9 @@ plot(log(final_df_sorted$mean_salary), log(final_df_sorted$flat_count),
      xlab = "log(Доходы)", ylab = "log(Квартиры)", pch = 18, col = "blue")
 abline(reg_log, col = "red", lwd = 2)
 
-# Вывод: Log-log показывает лучший баланс R² и AIC. Эластичность ~0.43. Но R² низкий — учет панельной структуры (FE) может улучшить.
+coef(reg_log)
+
+# Вывод: Log-log показывает лучший баланс R² и AIC. Но R² низкий — учет панельной структуры (FE) может улучшить.
 
 
 # Этап 4: Панельные модели на базе log-log
@@ -110,12 +162,34 @@ modelsummary(list("Pooled" = m1, "FE регионы" = m2, "FE годы" = m3),
              stars = TRUE, title = "Сравнение панельных спецификаций", coef_omit = "Intercept")
 coef(m2)
 summary(m2) # p-value: < 0.000000000000000222 => Модель статистически значима на уровне значимости 0.1
-# Вывод: FE по регионам (m2) — лучшая (within R² ~0.36, коэффициент ~0.44). Выбираем m2 как основную.
+# Вывод: FE по регионам (m2) — лучшая (within R² ~0.519). Выбираем m2 как основную.
+# fixef(m2) # Получить все фиксированные эффекты регионов
 
 
 
-y_within <- pmodel.response(m2)  # отклонения от среднего значения по каждому региону log(flat_count) за все годы
-X_within <- model.matrix(m2)[,1] # отклонения от среднего значения по каждому регионуlog(mean_salary) за все годы
+regional_effects <- fixef(m2)
+
+regional_df <- data.frame(
+  Регион = names(regional_effects),
+  alpha_i = as.numeric(regional_effects)
+)
+
+beta_value <- coef(m2)[1]  # 0.4064458
+
+regional_df <- regional_df %>%
+  mutate(
+    alpha_rounded = round(alpha_i, 4),
+    formula_math = paste0("log(flat_count) = ", alpha_rounded, 
+                          " + ", beta_rounded, " × log(mean_salary)"),
+  )
+
+write.csv(regional_df, "regional_fixed_effects.csv", 
+          row.names = FALSE, fileEncoding = "UTF-8")
+
+
+
+y_within <- pmodel.response(m2)  # log(flat_count_it) - среднее(log(flat_count_i)) — отклонения логарифма квартир в регионе i в год t от среднего значения по этому же региону за все годы
+X_within <- model.matrix(m2)[,1] # log(mean_salary_it) - среднее(log(mean_salary_i)) — отклонения логарифма доходов от средних по региону
 
 plot(X_within,
      y_within,
@@ -145,15 +219,6 @@ plot(x = as.numeric(predict(m2)),
 abline(h = 0, col = "red", lwd = 2)
 
 
-plot(as.numeric(pdata$Год), residuals(m2),
-     main = "Остатки модели",
-     xlab = "Год",
-     ylab = "Остатки",
-     pch = 19, col = rgb(0,0,0,0.3))
-abline(h = 0, col = "red", lwd = 2)
-lines(tapply(residuals(m2), pdata$Год, mean),  # сглаживание по годам
-      type = "l", col = "blue", lwd = 2)
-
 karelia_res <- residuals(m2)[index(pdata)$Регион == "Республика Карелия"]
 plot(karelia_res,
      main = "Остатки модели m2 — Республика Карелия",
@@ -162,8 +227,8 @@ plot(karelia_res,
 abline(h = 0, col = "red")
 
 # Q-Q 
-#qqnorm(res_m2, main = "Q-Q plot остатков m2")
-#`qqline(res_m2, col = "red")
+qqnorm(res_m2, main = "Q-Q plot остатков")
+qqline(res_m2, col = "red")
 
 
 # MAPE
@@ -171,11 +236,12 @@ pred_log <- predict(m2)
 pred_flats <- exp(pred_log)
 actual_flats <- pdata$flat_count
 
-mape <- mean(abs((pred_flats - actual_flats) / actual_flats)) * 100 # 27.64328
+mape <- mean(abs((pred_flats - actual_flats) / actual_flats)) * 100 # 21.64328
+mape
 # Вывод: Модель адекватна. 
 
-# Этап 6: Прогноз для Республики Карелия с m2
-year <- "2008"
+# Этап 6: Прогноз для Республики Карелия 
+year <- "2010"
 karelia_data <- final_df %>% filter(Регион == "Республика Карелия", Год == year)
 p_karelia <- pdata.frame(karelia_data, index = c("Регион", "Год"))
 
