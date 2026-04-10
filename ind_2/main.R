@@ -232,6 +232,153 @@ ggplot(plot_data_lm, aes(x = predicted, y = residuals)) +
   ) +
   theme_minimal()
 
+
+
+coefs <- coef(lm_model_district)
+
+intercept     <- round(coefs["(Intercept)"], 4)
+b_salary      <- round(coefs["log(mean_salary)"], 4)
+b_population  <- round(coefs["log(Population)"], 4)
+b_latitude    <- round(coefs["latitude"], 4)
+b_distance    <- round(coefs["distance_to_moscow_km"], 4)
+
+equation <- paste0(
+  "log(flat_count) = ", intercept,
+  " + ", b_salary, " × log(mean_salary)",
+  " + ", b_population, " × log(Population)",
+  " + ", b_latitude, " × latitude",
+  " + ", b_distance, " × distance_to_moscow_km"
+)
+
+mean_salary   <- mean(df_all_districts$mean_salary, na.rm = TRUE)
+mean_pop      <- mean(df_all_districts$Population, na.rm = TRUE)
+mean_lat      <- mean(df_all_districts$latitude, na.rm = TRUE)
+mean_dist     <- mean(df_all_districts$distance_to_moscow_km, na.rm = TRUE)
+
+# Расчёт эластичностей
+elast_salary     <- b_salary                                      # log-log → прямая эластичность
+elast_population <- b_population                                  # log-log → прямая эластичность
+elast_latitude   <- round(b_latitude * mean_lat, 4)               # log-lin → β × mean(X)
+elast_distance   <- round(b_distance * mean_dist, 4)              # log-lin → β × mean(X)
+
+cat("1. Эластичность flat_count по mean_salary:\n")
+cat("   ", elast_salary, "\n")
+cat("2. Эластичность flat_count по Population:\n")
+cat("   ", elast_population, "\n")
+cat("3. Эластичность flat_count по latitude:\n")
+cat("   ", elast_latitude, "\n")
+cat("4. Эластичность flat_count по distance_to_moscow_km:\n")
+cat("   ", elast_distance, "\n")
+
+
+
+mean_salary_avg <- mean(log(df_all_districts$mean_salary), na.rm = TRUE)
+mean_pop_avg    <- mean(log(df_all_districts$Population), na.rm = TRUE)
+lat_avg         <- mean(df_all_districts$latitude, na.rm = TRUE)
+dist_avg        <- mean(df_all_districts$distance_to_moscow_km, na.rm = TRUE)
+
+
+
+# По зарплате
+const_salary <- coefs[1] +
+  coefs["log(Population)"] * mean_pop_avg +
+  coefs["latitude"] * lat_avg +
+  coefs["distance_to_moscow_km"] * dist_avg
+
+eq_salary <- paste0(
+  "1) ln(flat_count) = ",
+  round(const_salary, 3),
+  " + ",
+  round(coefs["log(mean_salary)"], 3),
+  " * ln(mean_salary)"
+)
+
+# По населению
+const_pop <- coefs[1] +
+  coefs["log(mean_salary)"] * mean_salary_avg +
+  coefs["latitude"] * lat_avg +
+  coefs["distance_to_moscow_km"] * dist_avg
+
+eq_pop <- paste0(
+  "2) ln(flat_count) = ",
+  round(const_pop, 3),
+  " + ",
+  round(coefs["log(Population)"], 3),
+  " * ln(Population)"
+)
+
+# По широте
+const_lat <- coefs[1] +
+  coefs["log(mean_salary)"] * mean_salary_avg +
+  coefs["log(Population)"] * mean_pop_avg +
+  coefs["distance_to_moscow_km"] * dist_avg
+
+eq_lat <- paste0(
+  "3) ln(flat_count) = ",
+  round(const_lat, 3),
+  " + ",
+  round(coefs["latitude"], 3),
+  " * latitude"
+)
+
+# По расстоянию
+const_dist <- coefs[1] +
+  coefs["log(mean_salary)"] * mean_salary_avg +
+  coefs["log(Population)"] * mean_pop_avg +
+  coefs["latitude"] * lat_avg
+
+eq_dist <- paste0(
+  "4) ln(flat_count) = ",
+  round(const_dist, 3),
+  " + ",
+  round(coefs["distance_to_moscow_km"], 3),
+  " * distance_to_moscow_km"
+)
+
+
+cat(eq_salary, "\n")
+cat(eq_pop, "\n")
+cat(eq_lat, "\n")
+cat(eq_dist, "\n")
+
+
+
+
+pred <- predict(lm_model_district, interval = "confidence")
+
+df_all_districts$fit <- exp(pred[, "fit"])
+df_all_districts$lwr <- exp(pred[, "lwr"])
+df_all_districts$upr <- exp(pred[, "upr"])
+
+
+ggplot(df_all_districts, aes(x = fit, y = flat_count)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  
+  geom_abline(slope = 1, intercept = 0,
+              color = "red", linetype = "dashed") +
+  
+  geom_ribbon(aes(ymin = lwr, ymax = upr),
+              alpha = 0.2, fill = "blue") +
+  
+  labs(title = "Модель LM с доверительным интервалом",
+       subtitle = "Предсказанные vs фактические значения",
+       x = "Предсказанные flat_count",
+       y = "Фактические flat_count") +
+  
+  scale_x_continuous(labels = comma) +
+  scale_y_continuous(labels = comma) +
+  
+  theme_minimal() +
+  
+  annotate("text", 
+           x = min(df_all_districts$fit, na.rm = TRUE) * 1.05,
+           y = max(df_all_districts$flat_count, na.rm = TRUE) * 0.95,
+           label = paste("R² =", round(summary(lm_model_district)$r.squared, 3)), 
+           hjust = 0, size = 5)
+
+
+
+
 # ===================================================================
 # МОДЕЛЬ 2: FE модель (plm) по округам (within)
 # ===================================================================
